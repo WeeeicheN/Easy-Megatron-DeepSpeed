@@ -40,7 +40,7 @@ NUM_KV_HEADS=8
 ## Parallelism
 TP=2
 PP=2
-MP=1
+MP=$TP
 no_pp="false"
 ZERO_STAGE=1
 ### Data parallel size.
@@ -69,6 +69,7 @@ exit_duration=30000000
 LR=3e-4
 MIN_LR=3e-5
 GRAD_CLIP=1
+INIT_STD=0.02
 
 ### lr warmup and decay duration
 LR_WARMUP_STEPS=1
@@ -108,7 +109,7 @@ log_optimizer_state="false"
 ######################################
 # Data Configs
 data_options=" \
-    --data-path ${data_path} \
+    --data-path ${DATASET} \
     --data-impl mmap"
 
 # Below configuration required for llama model as per llama paper
@@ -123,44 +124,57 @@ data_options=" \
 ###############################################################################
 megatron_options=" \
     --override-opt_param-scheduler \
+    --optimizer adam \
     --adam-beta1 0.9 \
     --adam-beta2 0.95 \
-    --tensor-model-parallel-size ${mp_size} \
-    --init-method-std ${init_std} \
+    --tensor-model-parallel-size ${MP} \
+    --init-method-std ${INIT_STD} \
     --lr-decay-tokens ${lr_decay_tokens} \
     --lr-warmup-tokens ${lr_warmup_tokens} \
-    --micro-batch-size ${batch_size} \
+    --micro-batch-size ${MICRO_BATCH_SIZE} \
     --exit-duration-in-mins ${exit_duration} \
-    --global-batch-size ${global_batch_size} \
-    --num-layers ${num_layers} \
-    --hidden-size ${hidden_size} \
-    --num-attention-heads ${num_attn_heads} \
-    --seq-length ${seq_len} \
-    --max-position-embeddings ${seq_len} \
+    --global-batch-size ${GLOBAL_BATCH_SIZE} \
+    --num-layers ${NUM_LAYERS} \
+    --hidden-size ${HIDDEN_SIZE} \
+    --num-attention-heads ${NUM_HEADS} \
+    --seq-length ${SEQ_LENGTH} \
+    --max-position-embeddings ${SEQ_LENGTH} \
     --train-tokens ${train_tokens} \
     --train-samples ${train_samples} \
-    --lr ${lr} \
-    --min-lr ${min_lr} \
+    --tokenizer-type HFTokenizer \
+    --tokenizer-model $TOKENIZER_PATH \
+    --lr ${LR} \
+    --min-lr ${MIN_LR} \
     --lr-decay-style ${lr_decay_style} \
     --split 949,50,1 \
+    --distributed-backend nccl \
     --log-interval ${log_interval} \
     --eval-interval ${eval_interval} \
     --eval-iters ${eval_iters} \
     --save-interval ${save_interval} \
-    --weight-decay 0.1 \
-    --clip-grad 1.0 \
+    --weight-decay ${WEIGHT_DECAY} \
+    --clip-grad ${GRAD_CLIP} \
     --hysteresis 2 \
     --num-workers ${num_workers} \
-    --fp16 \
+    --bf16 \
     --seed ${seed} \
-    --load ${checkpoint_path} \
-    --save ${checkpoint_path} \
+    --load ${CHECKPOINT_PATH} \
+    --save ${CHECKPOINT_PATH} \
     --no-async-tensor-model-parallel-allreduce \
     --tensorboard-queue-size 1 \
     --log-timers-to-tensorboard \
     --log-batch-size-to-tensorboard \
     --log-validation-ppl-to-tensorboard \
-    --tensorboard-dir ${tensorboard_path}"
+    --tensorboard-dir ${tensorboard_path} \
+    --no-query-key-layer-scaling \
+    --attention-dropout 0 \
+    --hidden-dropout 0 \
+    --use-rotary-position-embeddings \
+    --untie-embeddings-and-output-weights \
+    --swiglu \
+    --normalization rmsnorm \
+    --disable-bias-linear \
+    --num-key-value-heads ${NUM_KV_HEADS}"
 
 if [ "${activation_checkpoint}" = "true" ]; then
 megatron_options="${megatron_options} \
@@ -228,50 +242,4 @@ if [[ $iteration -gt 0 ]]; then
     ds_ssh "echo $iteration_2 > $iteration_file_2"
 fi
 
-DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
-
-torchrun $DISTRIBUTED_ARGS \
-       pretrain_gpt.py \
-       --tensor-model-parallel-size $TP \
-       --pipeline-model-parallel-size $PP \
-       --num-layers $NUM_LAYERS \
-       --hidden-size $HIDDEN_SIZE \
-       --ffn-hidden-size $FFN_HIDDEN_SIZE \
-       --num-attention-heads $NUM_HEADS \
-       --micro-batch-size $MICRO_BATCH_SIZE \
-       --global-batch-size $GLOBAL_BATCH_SIZE \
-       --seq-length $SEQ_LENGTH \
-       --max-position-embeddings $SEQ_LENGTH \
-       --train-iters $TRAIN_STEPS \
-       --save $CHECKPOINT_PATH \
-       --load $CHECKPOINT_PATH \
-       --data-path $DATASET \
-       --data-impl mmap \
-       --tokenizer-type GPTSentencePieceTokenizer \
-       --tokenizer-model $TOKENIZER_PATH \
-       --split 949,50,1 \
-       --distributed-backend nccl \
-       --lr $LR \
-       --lr-decay-style cosine \
-       --min-lr $MIN_LR \
-       --weight-decay $WEIGHT_DECAY \
-       --clip-grad $GRAD_CLIP \
-       --lr-warmup-iters $LR_WARMUP_STEPS \
-       --optimizer adam \
-       --adam-beta1 0.9 \
-       --adam-beta2 0.95 \
-       --log-interval 1 \
-       --save-interval 10000 \
-       --eval-interval 1000 \
-       --eval-iters 10 \
-       --bf16 \
-       --no-query-key-layer-scaling \
-       --attention-dropout 0 \
-       --hidden-dropout 0 \
-       --use-rotary-position-embeddings \
-       --untie-embeddings-and-output-weights \
-       --swiglu \
-       --normalization rmsnorm \
-       --disable-bias-linear \
-       --num-key-value-heads $NUM_KV_HEADS \
-       $deepspeed_options
+deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options}
