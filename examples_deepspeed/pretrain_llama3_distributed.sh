@@ -1,39 +1,43 @@
 #!/bin/bash
-# This example script is contributed by external user https://github.com/nrailgun
+# This example script is originally contributed by external user https://github.com/nrailgun
 set -ex
+
+workdir=$PWD
+rootdir="$workdir""/../.."
 
 ######################################
 # Change the below configurations here
-BASE_PATH=./tmp
+BASE_PATH="$rootdir""/checkpoints/TestModel"
 DS_CONFIG=${BASE_PATH}/deepspeed.json
-DATASET_1="./tmp/data/bookcorpus_train_1m_text_sentence"
+DATASET_1="$rootdir""/data/test_data/data"
 DATASET="1 ${DATASET_1}"
-CHECKPOINT_PATH=./tmp
-TOKENIZER_PATH=./tmp/tokenizer.model # offical llama tokenizer.model
+CHECKPOINT_PATH="$rootdir""/checkpoints/TestModel"
+TOKENIZER_PATH="$rootdir""/..""/pretrained_model/Meta-Llama-3-8B-Instruct"
 
 TP=2
 PP=2
-ZERO_STAGE=0
+ZERO_STAGE=1
 
 GPUS_PER_NODE=8
 MASTER_ADDR=localhost
-MASTER_PORT=6000
+MASTER_PORT=6022
 NNODES=1
 NODE_RANK=0
 
-HIDDEN_SIZE=2048 # e.g. llama-13b: 5120
-FFN_HIDDEN_SIZE=5504 # e.g. llama-13b: 13824
-NUM_LAYERS=24 # e.g. llama-13b: 40
-NUM_HEADS=16 # e.g. llama-13b: 40
-SEQ_LENGTH=2048
-NUM_KV_HEADS=4 # llama2 70B uses GQA
+HIDDEN_SIZE=4096 # e.g. llama-13b: 5120
+FFN_HIDDEN_SIZE=14336 # e.g. llama-13b: 13824
+NUM_LAYERS=32 # e.g. llama-13b: 40
+NUM_HEADS=32 # e.g. llama-13b: 40
+SEQ_LENGTH=8192
+NUM_KV_HEADS=8 # llama2 70B uses GQA
 
-MICRO_BATCH_SIZE=4
-GLOBAL_BATCH_SIZE=32 # e.g. llama: 4M tokens
-TRAIN_STEPS=250000 # e.g. llama: 1T tokens / 4M tokens_per_batch = 250000 steps
+MICRO_BATCH_SIZE=1
+GLOBAL_BATCH_SIZE=8 # e.g. llama: 4M tokens
+TRAIN_STEPS=5 # e.g. llama: 1T tokens / 4M tokens_per_batch = 250000 steps
+
 LR=3e-4
 MIN_LR=3e-5
-LR_WARMUP_STEPS=2000
+LR_WARMUP_STEPS=1
 WEIGHT_DECAY=0.1
 GRAD_CLIP=1
 
