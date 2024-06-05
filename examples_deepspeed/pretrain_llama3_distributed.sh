@@ -16,12 +16,6 @@ TOKENIZER_PATH="$rootdir""/..""/pretrained_model/Meta-Llama-3-8B-Instruct"
 
 ######################################
 # Device Configs
-NNODES=1
-NODE_RANK=0
-GPUS_PER_NODE=8
-MASTER_ADDR=localhost
-MASTER_PORT=6022
-
 num_gpus=8 #$(($(ds_ssh nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)-2))
 num_gpus_pernode=8 #$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 num_node=1 #$(( ${num_gpus} / ${num_gpus_pernode} ))
@@ -37,18 +31,25 @@ NUM_KV_HEADS=8
 
 ######################################
 # Training Configs
+###############################################################################
 ## Parallelism
-TP=2
-PP=2
-MP=$TP
+mp_size=2
+tp_size=$mp_size
+
+pp_size=2
 no_pp="false"
-ZERO_STAGE=1
+
+zero_stage=1
+
 ### Data parallel size.
 dp_size=$(( ${num_gpus} / ${pp_size} / ${mp_size} ))
 ### Make sure that micro_batch_size <= global_batch_size*pp_size*mp_size/num_gpus
-GLOBAL_BATCH_SIZE=8
-MICRO_BATCH_SIZE=1
+### Reduce it manually if GPU OOM
+### micro_batch_size=$(( ${global_batch_size} / ${dp_size} ))
+global_batch_size=8
+micro_batch_size=1
 
+###############################################################################
 ## Duration
 ### The main termination condition
 train_tokens_in_billion=0.0001
@@ -65,16 +66,24 @@ train_samples=$(( 300 * 1000000000 * 2 / ${seq_len} ))
 ### enough to avoid undesired early termination.
 exit_duration=30000000
 
+###############################################################################
 ## LR
 LR=3e-4
-MIN_LR=3e-5
+MIN_LR=1e-6
 GRAD_CLIP=1
+### init_std is standard deviation for weight initialization. Usually larger
+### model needs lower std. We used a heuristic equation of sqrt(1/3/hidden_size)
+### from the MT-NLG 530B work (https://arxiv.org/pdf/2201.11990.pdf)
 INIT_STD=0.02
 
 ### lr warmup and decay duration
-LR_WARMUP_STEPS=1
 WEIGHT_DECAY=0.1
 
+### Original GPT-3 paper uses 375M warmup tokens and 260B cosine decay tokens.
+### Here we increase the warmup tokens to 3B since when batch size warmup is not
+### used, there are more tokens per step. Thus we need to increase warmup tokens
+### to make sure there are enough warmup steps, which is important for training
+### stability.
 lr_warmup_tokens_in_million=0.001
 lr_warmup_tokens=$((${lr_warmup_tokens_in_million} * 1000000))
 ### Here we changed the LR decay tokens to align with total train tokens, since
@@ -85,7 +94,7 @@ lr_decay_tokens_in_billion=${train_tokens_in_billion}
 lr_decay_tokens=$((${lr_decay_tokens_in_billion} * 1000000000))
 lr_decay_style="cosine"
 
-
+###############################################################################
 ## Misc
 log_interval=1
 eval_iters=1
@@ -108,10 +117,44 @@ log_optimizer_state="false"
 
 ######################################
 # Data Configs
+seed=1234
+num_workers=0
+
 data_options=" \
     --data-path ${DATASET} \
     --data-impl mmap"
 
+prescale_grad="true"
+
+######################################
+# Output Configs
+
+jobname="llama_tok${train_tokens_in_billion}B"
+jobname="${jobname}_lr${LR}_min${MIN_LR}_w${lr_warmup_tokens_in_million}M_d${lr_decay_tokens_in_billion}B_${lr_decay_style}"
+jobname="${jobname}_gbs${global_batch_size}_mbs${micro_batch_size}_g${num_gpus}"
+if [[ $zero_stage -gt 0 ]]; then
+    jobname="${jobname}_z${zero_stage}"
+    prescale_grad="false"
+fi
+if [[ $mp_size -gt 1 ]]; then
+    jobname="${jobname}_mp${mp_size}"
+fi
+if [ "${no_pp}" = "false" ]; then
+    jobname="${jobname}_pp${pp_size}"
+fi
+jobname="${jobname}_seed${seed}"
+
+username=$(whoami)
+output_home="output"
+log_path="${output_home}/log/"
+#checkpoint_path="${output_home}/checkpoint/${jobname}"
+tensorboard_dir="${output_home}/tensorboard/"
+tensorboard_path="${tensorboard_dir}${jobname}_${HOSTNAME}"
+mkdir -p ${log_path}
+#mkdir -p ${checkpoint_path}
+mkdir -p ${tensorboard_path}
+
+######################################
 # Below configuration required for llama model as per llama paper
 # --no-query-key-layer-scaling \
 # --attention-dropout 0 \
@@ -121,7 +164,15 @@ data_options=" \
 # --swiglu \
 # --normalization rmsnorm \
 # --disable-bias-linear \
-###############################################################################
+######################################
+
+# --override-opt_param-scheduler means:
+# 'Reset the values of the scheduler (learning rate,'
+# 'warmup iterations, minimum learning rate, maximum '
+# 'number of iterations, and decay style from input '
+# 'arguments and ignore values from checkpoints. Note'
+# 'that all the above values will be reset.'
+
 megatron_options=" \
     --override-opt_param-scheduler \
     --optimizer adam \
@@ -131,9 +182,9 @@ megatron_options=" \
     --init-method-std ${INIT_STD} \
     --lr-decay-tokens ${lr_decay_tokens} \
     --lr-warmup-tokens ${lr_warmup_tokens} \
-    --micro-batch-size ${MICRO_BATCH_SIZE} \
+    --micro-batch-size ${micro_batch_size} \
     --exit-duration-in-mins ${exit_duration} \
-    --global-batch-size ${GLOBAL_BATCH_SIZE} \
+    --global-batch-size ${global_batch_size} \
     --num-layers ${NUM_LAYERS} \
     --hidden-size ${HIDDEN_SIZE} \
     --num-attention-heads ${NUM_HEADS} \
@@ -141,8 +192,6 @@ megatron_options=" \
     --max-position-embeddings ${SEQ_LENGTH} \
     --train-tokens ${train_tokens} \
     --train-samples ${train_samples} \
-    --tokenizer-type HFTokenizer \
-    --tokenizer-model $TOKENIZER_PATH \
     --lr ${LR} \
     --min-lr ${MIN_LR} \
     --lr-decay-style ${lr_decay_style} \
@@ -166,6 +215,8 @@ megatron_options=" \
     --log-batch-size-to-tensorboard \
     --log-validation-ppl-to-tensorboard \
     --tensorboard-dir ${tensorboard_path} \
+    --tokenizer-type HFTokenizer \
+    --tokenizer-model $TOKENIZER_PATH \
     --no-query-key-layer-scaling \
     --attention-dropout 0 \
     --hidden-dropout 0 \
@@ -186,25 +237,27 @@ megatron_options="${megatron_options} \
     --log-optimizer-states-to-tensorboard"
 fi
 
+######################################
 cat <<EOT > $DS_CONFIG
 {
-  "train_batch_size" : $GLOBAL_BATCH_SIZE,
-  "train_micro_batch_size_per_gpu": $MICRO_BATCH_SIZE,
+  "train_batch_size" : $global_batch_size,
+  "train_micro_batch_size_per_gpu": $micro_batch_size,
   "steps_per_print": 1,
   "zero_optimization": {
-    "stage": $ZERO_STAGE
+    "stage": $zero_stage
   },
+  "prescale_grad"
   "bf16": {
     "enabled": true
   }
 }
 EOT
 
-deepspeed_options=""
-deepspeed_options=" --deepspeed ${deepspeed_options}"
-deepspeed_options=" --deepspeed_config=$DS_CONFIG ${deepspeed_options}"
-deepspeed_options=" --zero-stage=$ZERO_STAGE ${deepspeed_options}"
-deepspeed_options=" --pipeline-model-parallel-size=$PP ${deepspeed_options}"
+deepspeed_options=" \
+    --deepspeed \
+    --deepspeed_config ${DS_CONFIG} \
+    --zero-stage ${zero_stage} \
+    --pipeline-model-parallel-size ${PP}"
 
 if [ "${activation_checkpoint}" = "true" ]; then
   deepspeed_options="--deepspeed-activation-checkpointing ${deepspeed_options}"
