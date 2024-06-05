@@ -7,12 +7,12 @@ rootdir="$workdir""/../.."
 
 ######################################
 # Path
-BASE_PATH="$rootdir""/checkpoints/TestModel"
-DS_CONFIG=${BASE_PATH}/deepspeed.json
-DATASET_1="$rootdir""/data/test_data/data"
-DATASET="1 ${DATASET_1}"
-CHECKPOINT_PATH="$rootdir""/checkpoints/TestModel"
-TOKENIZER_PATH="$rootdir""/..""/pretrained_model/Meta-Llama-3-8B-Instruct"
+base_path="$rootdir""/checkpoints/TestModel"
+ds_config=${base_path}/deepspeed.json
+dataset_1="$rootdir""/data/test_data/data"
+dataset="1 ${dataset_1}"
+checkpoint_path="$rootdir""/checkpoints/TestModel"
+tokenizer_path="$rootdir""/..""/pretrained_model/Meta-Llama-3-8B-Instruct"
 
 ######################################
 # Device Configs
@@ -22,12 +22,12 @@ num_node=1 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 
 ######################################
 # Model Configs
-HIDDEN_SIZE=4096
-FFN_HIDDEN_SIZE=14336
-NUM_LAYERS=32
-NUM_HEADS=32
-SEQ_LENGTH=8192
-NUM_KV_HEADS=8
+hidden_size=4096
+ffn_hidden_size=14336
+num_layers=32
+num_heads=32
+seq_length=8192
+num_kv_heads=8
 
 ######################################
 # Training Configs
@@ -68,16 +68,16 @@ exit_duration=30000000
 
 ###############################################################################
 ## LR
-LR=3e-4
-MIN_LR=1e-6
-GRAD_CLIP=1
+lr=3e-4
+min_lr=1e-6
+grad_clip=1
 ### init_std is standard deviation for weight initialization. Usually larger
 ### model needs lower std. We used a heuristic equation of sqrt(1/3/hidden_size)
 ### from the MT-NLG 530B work (https://arxiv.org/pdf/2201.11990.pdf)
-INIT_STD=0.02
+init_std=0.02
 
 ### lr warmup and decay duration
-WEIGHT_DECAY=0.1
+weight_decay=0.1
 
 ### Original GPT-3 paper uses 375M warmup tokens and 260B cosine decay tokens.
 ### Here we increase the warmup tokens to 3B since when batch size warmup is not
@@ -121,7 +121,7 @@ seed=1234
 num_workers=0
 
 data_options=" \
-    --data-path ${DATASET} \
+    --data-path ${dataset} \
     --data-impl mmap"
 
 prescale_grad="true"
@@ -130,7 +130,7 @@ prescale_grad="true"
 # Output Configs
 
 jobname="llama_tok${train_tokens_in_billion}B"
-jobname="${jobname}_lr${LR}_min${MIN_LR}_w${lr_warmup_tokens_in_million}M_d${lr_decay_tokens_in_billion}B_${lr_decay_style}"
+jobname="${jobname}_lr${lr}_min${min_lr}_w${lr_warmup_tokens_in_million}M_d${lr_decay_tokens_in_billion}B_${lr_decay_style}"
 jobname="${jobname}_gbs${global_batch_size}_mbs${micro_batch_size}_g${num_gpus}"
 if [[ $zero_stage -gt 0 ]]; then
     jobname="${jobname}_z${zero_stage}"
@@ -178,22 +178,23 @@ megatron_options=" \
     --optimizer adam \
     --adam-beta1 0.9 \
     --adam-beta2 0.95 \
-    --tensor-model-parallel-size ${MP} \
-    --init-method-std ${INIT_STD} \
+    --tensor-model-parallel-size ${mp_size} \
+    --init-method-std ${init_std} \
     --lr-decay-tokens ${lr_decay_tokens} \
     --lr-warmup-tokens ${lr_warmup_tokens} \
     --micro-batch-size ${micro_batch_size} \
     --exit-duration-in-mins ${exit_duration} \
     --global-batch-size ${global_batch_size} \
-    --num-layers ${NUM_LAYERS} \
-    --hidden-size ${HIDDEN_SIZE} \
-    --num-attention-heads ${NUM_HEADS} \
-    --seq-length ${SEQ_LENGTH} \
-    --max-position-embeddings ${SEQ_LENGTH} \
+    --num-layers ${num_layers} \
+    --hidden-size ${hidden_size} \
+    --ffn-hidden-size ${ffn_hidden_size} \
+    --num-attention-heads ${num_heads} \
+    --seq-length ${seq_length} \
+    --max-position-embeddings ${seq_length} \
     --train-tokens ${train_tokens} \
     --train-samples ${train_samples} \
-    --lr ${LR} \
-    --min-lr ${MIN_LR} \
+    --lr ${lr} \
+    --min-lr ${min_lr} \
     --lr-decay-style ${lr_decay_style} \
     --split 949,50,1 \
     --distributed-backend nccl \
@@ -201,14 +202,14 @@ megatron_options=" \
     --eval-interval ${eval_interval} \
     --eval-iters ${eval_iters} \
     --save-interval ${save_interval} \
-    --weight-decay ${WEIGHT_DECAY} \
-    --clip-grad ${GRAD_CLIP} \
+    --weight-decay ${weight_decay} \
+    --clip-grad ${grad_clip} \
     --hysteresis 2 \
     --num-workers ${num_workers} \
     --bf16 \
     --seed ${seed} \
-    --load ${CHECKPOINT_PATH} \
-    --save ${CHECKPOINT_PATH} \
+    --load ${checkpoint_path} \
+    --save ${checkpoint_path} \
     --no-async-tensor-model-parallel-allreduce \
     --tensorboard-queue-size 1 \
     --log-timers-to-tensorboard \
@@ -216,7 +217,7 @@ megatron_options=" \
     --log-validation-ppl-to-tensorboard \
     --tensorboard-dir ${tensorboard_path} \
     --tokenizer-type HFTokenizer \
-    --tokenizer-model $TOKENIZER_PATH \
+    --tokenizer-model $tokenizer_path \
     --no-query-key-layer-scaling \
     --attention-dropout 0 \
     --hidden-dropout 0 \
@@ -225,7 +226,7 @@ megatron_options=" \
     --swiglu \
     --normalization rmsnorm \
     --disable-bias-linear \
-    --num-key-value-heads ${NUM_KV_HEADS}"
+    --num-key-value-heads ${num_kv_heads}"
 
 if [ "${activation_checkpoint}" = "true" ]; then
 megatron_options="${megatron_options} \
@@ -238,7 +239,7 @@ megatron_options="${megatron_options} \
 fi
 
 ######################################
-cat <<EOT > $DS_CONFIG
+cat <<EOT > $ds_config
 {
   "train_batch_size" : $global_batch_size,
   "train_micro_batch_size_per_gpu": $micro_batch_size,
@@ -246,7 +247,7 @@ cat <<EOT > $DS_CONFIG
   "zero_optimization": {
     "stage": $zero_stage
   },
-  "prescale_grad"
+  "prescale_grad": $prescale_grad,
   "bf16": {
     "enabled": true
   }
@@ -255,9 +256,14 @@ EOT
 
 deepspeed_options=" \
     --deepspeed \
-    --deepspeed_config ${DS_CONFIG} \
+    --deepspeed_config ${ds_config} \
     --zero-stage ${zero_stage} \
-    --pipeline-model-parallel-size ${PP}"
+    --pipeline-model-parallel-size ${pp_size}"
+
+if [[ "${no_pp}" = "true" ]]; then
+deepspeed_options="${deepspeed_options} \
+    --no-pipeline-parallel"
+fi
 
 if [ "${activation_checkpoint}" = "true" ]; then
   deepspeed_options="--deepspeed-activation-checkpointing ${deepspeed_options}"
@@ -269,11 +275,6 @@ if [ "${activation_checkpoint}" = "true" ]; then
   deepspeed_options="--recompute-granularity full --recompute-method uniform ${deepspeed_options}"
   ## new argument for recomputing only the attention layer
   # deepspeed_options="--recompute-granularity selective ${deepspeed_options}"
-fi
-
-if [[ "${no_pp}" = "true" ]]; then
-deepspeed_options="${deepspeed_options} \
-    --no-pipeline-parallel"
 fi
 
 ## When saving checkpoint to a storage with cache, their could be consistency
