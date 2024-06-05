@@ -296,4 +296,4 @@ if [[ $iteration -gt 0 ]]; then
     ds_ssh "echo $iteration_2 > $iteration_file_2"
 fi
 
-deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options}
+deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} & >> ${log_path}/${jobname}_${HOSTNAME}.log
