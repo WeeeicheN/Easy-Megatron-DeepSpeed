@@ -53,7 +53,8 @@ micro_batch_size=1
 ## Duration
 ### The main termination condition
 train_tokens_in_billion=0.0001
-train_tokens=$((${train_tokens_in_billion} * 1000000000))
+#train_tokens=$((${train_tokens_in_billion} * 1000000000))
+train_tokens=$(echo "${train_tokens_in_billion}*1000000000/1" | bc)
 
 ### train_samples is another termination condition and also affect the number of 
 ### data samples to be indexed. Since we want to reach the train_tokens
@@ -85,13 +86,15 @@ weight_decay=0.1
 ### to make sure there are enough warmup steps, which is important for training
 ### stability.
 lr_warmup_tokens_in_million=0.001
-lr_warmup_tokens=$((${lr_warmup_tokens_in_million} * 1000000))
+#lr_warmup_tokens=$((${lr_warmup_tokens_in_million} * 1000000))
+lr_warmup_tokens=$(echo "${lr_warmup_tokens_in_million}*1000000/1" | bc)
 ### Here we changed the LR decay tokens to align with total train tokens, since
 ### related works (e.g., https://arxiv.org/abs/2203.15556) find that setting the
 ### learning rate schedule to match the number of training tokens results in the
 ### best final model quality 
 lr_decay_tokens_in_billion=${train_tokens_in_billion}
-lr_decay_tokens=$((${lr_decay_tokens_in_billion} * 1000000000))
+#lr_decay_tokens=$((${lr_decay_tokens_in_billion} * 1000000000))
+lr_decay_tokens=$(echo "${lr_decay_tokens_in_billion}*1000000000/1" | bc)
 lr_decay_style="cosine"
 
 ###############################################################################
@@ -296,4 +299,4 @@ if [[ $iteration -gt 0 ]]; then
     ds_ssh "echo $iteration_2 > $iteration_file_2"
 fi
 
-deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} & >> ${log_path}/${jobname}_${HOSTNAME}.log
+deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} #& >> ${log_path}/${jobname}_${HOSTNAME}.log
