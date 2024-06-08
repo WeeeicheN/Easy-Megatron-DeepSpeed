@@ -12,7 +12,7 @@ ds_config=${base_path}/deepspeed.json
 dataset_1="$rootdir""/data/test_data/data"
 dataset="1 ${dataset_1}"
 checkpoint_path="$rootdir""/checkpoints/TestModel"
-tokenizer_path="$rootdir""/..""/pretrained_model/Meta-Llama-3-8B-Instruct"
+tokenizer_path="$rootdir""/..""/pretrained_models/Meta-Llama-3-8B-Instruct"
 
 ######################################
 # Device Configs
@@ -22,12 +22,12 @@ num_node=1 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 
 ######################################
 # Model Configs
-hidden_size=4096
-ffn_hidden_size=14336
-num_layers=32
-num_heads=32
-seq_length=8192
-num_kv_heads=8
+hidden_size=128 #4096
+ffn_hidden_size=448 #14336
+num_layers=2 #32
+num_heads=8 #32
+seq_length=128 #8192
+num_kv_heads=2
 
 ######################################
 # Training Configs
@@ -61,7 +61,7 @@ train_tokens=$(echo "${train_tokens_in_billion}*1000000000/1" | bc)
 ### above, and data efficiency techniques may change num tokens in some samples,
 ### so we just set this config large enough to make sure we have enough
 ### processed data and don't terminate by train_samples.
-train_samples=$(( 300 * 1000000000 * 2 / ${seq_length} ))
+train_samples=$(( 300 * 1000000000 * 2 / ${seq_length} )) # If too large, will make it slow!
 
 ### Another wall-clock time termination condition in minutes. Set it large
 ### enough to avoid undesired early termination.
@@ -221,6 +221,7 @@ megatron_options=" \
     --tensorboard-dir ${tensorboard_path} \
     --tokenizer-type HFTokenizer \
     --tokenizer-model $tokenizer_path \
+    --use-flash-attn-v2 \
     --no-query-key-layer-scaling \
     --attention-dropout 0 \
     --hidden-dropout 0 \
