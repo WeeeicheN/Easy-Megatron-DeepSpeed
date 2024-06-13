@@ -331,6 +331,9 @@ def _build_index_mappings(name, data_prefix, documents, sizes,
     args = get_args()
     # Number of tokens in each epoch and number of required epochs.
     tokens_per_epoch = _num_tokens(documents, sizes)
+    ### Added by WeeeicheN
+    print_rank_0(f' > Total number of tokens in the dataset {data_prefix}_{name}: {tokens_per_epoch} ')
+    ###
     num_epochs = _num_epochs(tokens_per_epoch, seq_length, num_samples)
     if args.train_data_exact_num_epochs is not None and name == 'train':
         num_epochs = args.train_data_exact_num_epochs
