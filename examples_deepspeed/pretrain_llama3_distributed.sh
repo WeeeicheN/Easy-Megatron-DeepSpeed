@@ -28,7 +28,7 @@ ffn_hidden_size=14336
 num_layers=32 # It's ok to set num_layers=1 for data preprocessing
 num_heads=32
 seq_length=8192 # Do not change seq_length 
-num_kv_heads=2
+num_kv_heads=8
 
 ######################################
 # Training Configs
