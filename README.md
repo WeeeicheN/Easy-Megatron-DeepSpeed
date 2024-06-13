@@ -1,3 +1,11 @@
+# Train your LLM from scratch using Megatron-DeepSpeed Easily
+
+ROOTDIR
+- Easy-Megatron-DeepSpeed
+- data
+- tokenizers
+- checkpoints
+
 Below is Megatron-DeepSpeed's original README.
 ------
 
