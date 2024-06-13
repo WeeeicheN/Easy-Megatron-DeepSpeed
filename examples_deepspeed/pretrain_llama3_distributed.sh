@@ -7,26 +7,27 @@ rootdir="$workdir""/../.."
 
 ######################################
 # Path
-base_path="$rootdir""/checkpoints/TestModel"
-ds_config=${base_path}/deepspeed.json
-dataset_1="$rootdir""/data/test_data/data"
+#base_path="$rootdir""/checkpoints/TestModel" # see below
+#checkpoint_path="$rootdir""/checkpoints/TestModel" # see below
+#ds_config=${base_path}/deepspeed.json # see below
+dataset_1="$rootdir""/data/test_data/my-gpt2_text_document"
 dataset="1 ${dataset_1}"
-checkpoint_path="$rootdir""/checkpoints/TestModel"
-tokenizer_path="$rootdir""/..""/pretrained_models/Meta-Llama-3-8B-Instruct"
+tokenizer_path="$rootdir""/tokenizers/arxiv_vs256k_msl20.model"
+vocab_path="$rootdir""/tokenizers/arxiv_vs256k_msl20.vocab"
 
 ######################################
 # Device Configs
-num_gpus=8 #$(($(ds_ssh nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)-2))
+num_gpus=16 #$(($(ds_ssh nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)-2))
 num_gpus_pernode=8 #$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-num_node=1 #$(( ${num_gpus} / ${num_gpus_pernode} ))
+num_node=2 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 
 ######################################
 # Model Configs
 hidden_size=128 #4096
 ffn_hidden_size=448 #14336
-num_layers=2 #32
+num_layers=2 #32 #只变layers
 num_heads=8 #32
-seq_length=128 #8192
+seq_length=128 #8192 #seqlength 不能变
 num_kv_heads=2
 
 ######################################
@@ -46,7 +47,7 @@ dp_size=$(( ${num_gpus} / ${pp_size} / ${mp_size} ))
 ### Make sure that micro_batch_size <= global_batch_size*pp_size*mp_size/num_gpus
 ### Reduce it manually if GPU OOM
 ### micro_batch_size=$(( ${global_batch_size} / ${dp_size} ))
-global_batch_size=8
+global_batch_size=16
 micro_batch_size=1
 
 ###############################################################################
@@ -108,7 +109,7 @@ eval_interval=5
 num_save=1
 estimated_train_iter=$((${train_tokens} / ${seq_length} / ${global_batch_size}))
 ### save_interval=$((${estimated_train_iter} / ${num_save}))
-save_interval=5
+save_interval=5 # 2~3 小时存一次
 
 ### Activation checkpointing saves GPU memory, but reduces training speed
 #activation_checkpoint="true"
@@ -124,6 +125,7 @@ seed=1234
 num_workers=0
 
 data_options=" \
+    --vocab-file ${vocab_path} \
     --data-path ${dataset} \
     --data-impl mmap"
 
@@ -147,14 +149,14 @@ if [ "${no_pp}" = "false" ]; then
 fi
 jobname="${jobname}_seed${seed}"
 
-username=$(whoami)
+#username=$(whoami)
 output_home="output"
 log_path="${output_home}/log/"
-#checkpoint_path="${output_home}/checkpoint/${jobname}"
+checkpoint_path="${rootdir}/checkpoints/${jobname}"
 tensorboard_dir="${output_home}/tensorboard/"
 tensorboard_path="${tensorboard_dir}${jobname}_${HOSTNAME}"
 mkdir -p ${log_path}
-#mkdir -p ${checkpoint_path}
+mkdir -p ${checkpoint_path}
 mkdir -p ${tensorboard_path}
 
 ######################################
@@ -219,7 +221,7 @@ megatron_options=" \
     --log-batch-size-to-tensorboard \
     --log-validation-ppl-to-tensorboard \
     --tensorboard-dir ${tensorboard_path} \
-    --tokenizer-type HFTokenizer \
+    --tokenizer-type SentencePieceTokenizer \
     --tokenizer-model $tokenizer_path \
     --use-flash-attn-v2 \
     --no-query-key-layer-scaling \
@@ -243,6 +245,8 @@ megatron_options="${megatron_options} \
 fi
 
 ######################################
+ds_config=${checkpoint_path}/deepspeed.json
+
 cat <<EOT > $ds_config
 {
   "train_batch_size" : $global_batch_size,
@@ -300,4 +304,10 @@ if [[ $iteration -gt 0 ]]; then
     ds_ssh "echo $iteration_2 > $iteration_file_2"
 fi
 
-deepspeed ${workdir}/../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} #& >> ${log_path}/${jobname}_${HOSTNAME}.log
+#export NCCL_SOCKET_IFNAME="bind0"
+
+deepspeed --hostfile ${rootdir}/hostfile \
+    ${workdir}/../pretrain_gpt.py \
+    ${megatron_options} \
+    ${data_options} \
+    ${deepspeed_options} #& >> ${log_path}/${jobname}_${HOSTNAME}.log
