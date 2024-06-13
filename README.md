@@ -1,5 +1,13 @@
 # Train your LLM from scratch using Megatron-DeepSpeed Easily
 
+***
+
+Currently support: 
+
+Llama
+
+***
+
 File Tree:
 
 ROOTDIR
