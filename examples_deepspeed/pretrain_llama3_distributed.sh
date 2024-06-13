@@ -10,7 +10,7 @@ rootdir="$workdir""/../.."
 #base_path="$rootdir""/checkpoints/TestModel" # see below
 #checkpoint_path="$rootdir""/checkpoints/TestModel" # see below
 #ds_config=${base_path}/deepspeed.json # see below
-dataset_1="$rootdir""/data/test_data/my-gpt2_text_document"
+dataset_1="$rootdir""/data/processed_redpajama/arxiv/arxiv_text_document"
 dataset="1 ${dataset_1}"
 tokenizer_path="$rootdir""/tokenizers/arxiv_vs256k_msl20.model"
 vocab_path="$rootdir""/tokenizers/arxiv_vs256k_msl20.vocab"
@@ -25,7 +25,7 @@ num_node=2 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 # Model Configs
 hidden_size=4096
 ffn_hidden_size=14336
-num_layers=32 # It's ok to set num_layers=1 for data preprocessing
+num_layers=2 #32 # It's ok to set num_layers=2 for data preprocessing; if num_layers=1 may raise ValueError: optimizer got an empty parameter list
 num_heads=32
 seq_length=8192 # Do not change seq_length 
 num_kv_heads=8
@@ -53,7 +53,7 @@ micro_batch_size=1
 ###############################################################################
 ## Duration
 ### The main termination condition
-train_tokens_in_billion=0.0001
+train_tokens_in_billion=20
 #train_tokens=$((${train_tokens_in_billion} * 1000000000))
 train_tokens=$(echo "${train_tokens_in_billion}*1000000000/1" | bc)
 
@@ -62,7 +62,8 @@ train_tokens=$(echo "${train_tokens_in_billion}*1000000000/1" | bc)
 ### above, and data efficiency techniques may change num tokens in some samples,
 ### so we just set this config large enough to make sure we have enough
 ### processed data and don't terminate by train_samples.
-train_samples=$(( 300 * 1000000000 * 2 / ${seq_length} )) # If too large, will make it slow!
+#train_samples=$(( 300 * 1000000000 * 2 / ${seq_length} )) # If too large, will make data-preprocessing slow!
+train_samples=$(( ${train_tokens} * 2 / ${seq_length} ))
 
 ### Another wall-clock time termination condition in minutes. Set it large
 ### enough to avoid undesired early termination.
@@ -86,7 +87,7 @@ weight_decay=0.1
 ### used, there are more tokens per step. Thus we need to increase warmup tokens
 ### to make sure there are enough warmup steps, which is important for training
 ### stability.
-lr_warmup_tokens_in_million=0.001
+lr_warmup_tokens_in_million=$(echo "${train_tokens_in_billion}*10/1" | bc)
 #lr_warmup_tokens=$((${lr_warmup_tokens_in_million} * 1000000))
 lr_warmup_tokens=$(echo "${lr_warmup_tokens_in_million}*1000000/1" | bc)
 ### Here we changed the LR decay tokens to align with total train tokens, since
@@ -101,15 +102,15 @@ lr_decay_style="cosine"
 ###############################################################################
 ## Misc
 log_interval=1
-eval_iters=1
-eval_interval=5
+eval_iters=100
+eval_interval=100
 ### num_save controls how frequent to save checkpoint. num_save=20 means that a
 ### checkpoint will be saved every 5% of training. For longer training you would
 ### want larger num_save to save more frequently, and vice versa.
-num_save=1
+#num_save=1 # Comment out
 estimated_train_iter=$((${train_tokens} / ${seq_length} / ${global_batch_size}))
 ### save_interval=$((${estimated_train_iter} / ${num_save}))
-save_interval=5 # 2~3 小时存一次
+save_interval=500 # 2~3 小时存一次
 
 ### Activation checkpointing saves GPU memory, but reduces training speed
 #activation_checkpoint="true"
@@ -121,7 +122,7 @@ log_optimizer_state="false"
 
 ######################################
 # Data Configs
-seed=1234
+seed=42
 num_workers=0
 
 data_options=" \
