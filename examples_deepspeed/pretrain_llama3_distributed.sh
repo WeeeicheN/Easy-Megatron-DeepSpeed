@@ -1,5 +1,5 @@
 #!/bin/bash
-# This example script is originally contributed by external user https://github.com/nrailgun
+# This example script is originally contributed by external user https://github.com/nrailgun, but modified here
 set -ex
 
 workdir=$PWD
@@ -23,11 +23,11 @@ num_node=2 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 
 ######################################
 # Model Configs
-hidden_size=128 #4096
-ffn_hidden_size=448 #14336
-num_layers=2 #32 #只变layers
-num_heads=8 #32
-seq_length=128 #8192 #seqlength 不能变
+hidden_size=4096
+ffn_hidden_size=14336
+num_layers=32 # It's ok to set num_layers=1 for data preprocessing
+num_heads=32
+seq_length=8192 # Do not change seq_length 
 num_kv_heads=2
 
 ######################################
