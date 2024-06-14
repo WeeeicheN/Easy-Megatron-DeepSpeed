@@ -22,10 +22,18 @@ num_gpus_pernode=8 #$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 num_node=2 #$(( ${num_gpus} / ${num_gpus_pernode} ))
 
 ######################################
-# Model Configs
+# Model Configs, Params = 12*l*h^2
+# hidden_size=4096
+# ffn_hidden_size=14336
+# num_layers=32 # It's ok to set num_layers=2 for data preprocessing; if num_layers=1 may raise ValueError: optimizer got an empty parameter list
+# num_heads=32
+# seq_length=8192 # Do not change seq_length 
+# num_kv_heads=8
+
+## 1B
 hidden_size=4096
 ffn_hidden_size=14336
-num_layers=2 #32 # It's ok to set num_layers=2 for data preprocessing; if num_layers=1 may raise ValueError: optimizer got an empty parameter list
+num_layers=6 # It's ok to set num_layers=2 for data preprocessing; if num_layers=1 may raise ValueError: optimizer got an empty parameter list
 num_heads=32
 seq_length=8192 # Do not change seq_length 
 num_kv_heads=8
@@ -47,13 +55,15 @@ dp_size=$(( ${num_gpus} / ${pp_size} / ${mp_size} ))
 ### Make sure that micro_batch_size <= global_batch_size*pp_size*mp_size/num_gpus
 ### Reduce it manually if GPU OOM
 ### micro_batch_size=$(( ${global_batch_size} / ${dp_size} ))
-global_batch_size=16
-micro_batch_size=1
+# 8B params, gbs=64, mgs=4, OOM
+# 1B params, gbs=64, mgs=4, OOM; gbs=48, mgs=3, OK
+global_batch_size=48
+micro_batch_size=3
 
 ###############################################################################
 ## Duration
 ### The main termination condition
-train_tokens_in_billion=20
+train_tokens_in_billion=21
 #train_tokens=$((${train_tokens_in_billion} * 1000000000))
 train_tokens=$(echo "${train_tokens_in_billion}*1000000000/1" | bc)
 
@@ -110,7 +120,7 @@ eval_interval=100
 #num_save=1 # Comment out
 estimated_train_iter=$((${train_tokens} / ${seq_length} / ${global_batch_size}))
 ### save_interval=$((${estimated_train_iter} / ${num_save}))
-save_interval=500 # 2~3 小时存一次
+save_interval=1000 # 2~3 小时存一次
 
 ### Activation checkpointing saves GPU memory, but reduces training speed
 #activation_checkpoint="true"
@@ -259,6 +269,11 @@ cat <<EOT > $ds_config
   "prescale_grad": $prescale_grad,
   "bf16": {
     "enabled": true
+  },
+  "tensorboard": {
+    "enabled": true,
+    "output_path": "$tensorboard_path",
+    "job_name": "deepspeed_${jobname}"
   }
 }
 EOT
